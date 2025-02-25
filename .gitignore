@@ -1,0 +1,8 @@
+**/__pycache__
+*.egg-info
+.mypy_cache
+.nox
+.pytest_cache
+.ruff_cache
+.vscode
+build

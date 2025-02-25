@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.2", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wtflux"
+version = "0.1.0"
+description = "Utilities for computing fluxes in numerical conservation laws."
+authors = [
+    { name = "Jonathan Palafoutas", email = "jpalafou@princeton.edu" }
+]
+    license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ipykernel",
+    "matplotlib",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["nox", "pre-commit"]
+typecheck = ["mypy"]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["wtflux"]
