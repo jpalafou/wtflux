@@ -63,11 +63,9 @@ def primitives_from_conservatives(
     v3 = m3 / rho
     K = 0.5 * rho * (v1**2 + v2**2 + v3**2)
     P = (gamma - 1) * (E - K)
-    if passives is not None:
-        primivitve_passives = passives / rho
-        return rho, v1, v2, v3, P, primivitve_passives
-    else:
-        return rho, v1, v2, v3, P, None
+    primivitve_passives = passives / rho if passives is not None else None
+    return rho, v1, v2, v3, P, primivitve_passives
+
 
 
 @fuse
@@ -107,12 +105,8 @@ def conservatives_from_primitives(
     m3 = rho * v3
     K = 0.5 * rho * (v1**2 + v2**2 + v3**2)
     E = K + P / (gamma - 1)
-    if passives is not None:
-        conservative_passives = passives * rho
-        return rho, m1, m2, m3, E, conservative_passives
-    else:
-        return rho, m1, m2, m3, E, None
-
+    conservative_passives = passives * rho if passives is not None else None
+    return rho, m1, m2, m3, E, conservative_passives
 
 @fuse
 def fluxes(
@@ -152,12 +146,8 @@ def fluxes(
     F_m3 = rho * v1 * v3
     K = 0.5 * rho * (v1**2 + v2**2 + v3**2)
     F_E = (K + P / (gamma - 1) + P) * v1
-    if passives is not None:
-        F_passives = passives * v1
-        return F_rho, F_m1, F_m2, F_m3, F_E, F_passives
-    else:
-        return F_rho, F_m1, F_m2, F_m3, F_E, None
-
+    F_passives = passives * v1 if passives is not None else None
+    return F_rho, F_m1, F_m2, F_m3, F_E, F_passives
 
 @fuse
 def llf(
