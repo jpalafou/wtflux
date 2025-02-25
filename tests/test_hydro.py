@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from wtflux.hydro import (
+    advection_upwinding,
     conservatives_from_primitives,
     fluxes,
     llf,
@@ -109,6 +110,38 @@ def test_fluxes(n_passives):
     gamma = 5 / 3
     rho, vx, vy, vz, P, passives = random_hydro_data(N, n_passives)
     fluxes(rho, vx, vy, vz, P, gamma, passives)
+
+
+@pytest.mark.parametrize("precompute_conservatives", [True, False])
+@pytest.mark.parametrize("n_passives", [0, 1, 2, 3])
+@pytest.mark.parametrize("v", [-1, 1])
+def test_advection_upwinding(precompute_conservatives, n_passives, v):
+    """
+    Test the advection upwinding flux calculation.
+    """
+    N = 32
+    rho_L, vx_L, vy_L, vz_L, _, passives_L = random_hydro_data(N, n_passives)
+    rho_R, vx_R, vy_R, vz_R, _, passives_R = random_hydro_data(N, n_passives)
+    vx_L[...] = v
+    vx_R[...] = v
+    F_rho, F_vx, F_vy, F_vz, F_passives = advection_upwinding(
+        rho_L,
+        vx_L,
+        vy_L,
+        vz_L,
+        rho_R,
+        vx_R,
+        vy_R,
+        vz_R,
+        passives_L,
+        passives_R,
+    )
+    assert np.all(F_rho / v == (rho_L if v > 0 else rho_R))
+    assert np.all(F_vx / v == (vx_L if v > 0 else vx_R))
+    assert np.all(F_vy / v == (vy_L if v > 0 else vy_R))
+    assert np.all(F_vz / v == (vz_L if v > 0 else vz_R))
+    if n_passives > 0:
+        assert np.all(F_passives / v == (passives_L if v > 0 else passives_R))
 
 
 @pytest.mark.parametrize("precompute_conservatives", [True, False])
