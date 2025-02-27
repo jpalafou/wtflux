@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, cast
+from typing import Callable, Optional, Tuple
 
 from . import ArrayLike, cp, fuse
 
@@ -151,131 +151,126 @@ def fluxes(
     return F_rho, F_m1, F_m2, F_m3, F_E, F_passives
 
 
-def _upwind(yl: ArrayLike, yr: ArrayLike, v: ArrayLike) -> ArrayLike:
-    """
-    Upwinding operator for states yl and yr with velocity v.
-
-    Args:
-        yl (ArrayLike): Left state.
-        yr (ArrayLike): Right state.
-        v (ArrayLike): Velocity.
-
-    Returns:
-        ArrayLike: Flux.
-    """
-    return v * cp.where(v > 0, yl, cp.where(v < 0, yr, 0))
-
-
 @fuse
-def advection_upwinding(
+def call_riemann_solver(
+    rs: Callable[..., Tuple[ArrayLike, ...]],
     rho_L: ArrayLike,
     v1_L: ArrayLike,
     v2_L: ArrayLike,
     v3_L: ArrayLike,
+    P_L: ArrayLike,
+    m1_L: ArrayLike,
+    m2_L: ArrayLike,
+    m3_L: ArrayLike,
+    E_L: ArrayLike,
     rho_R: ArrayLike,
     v1_R: ArrayLike,
     v2_R: ArrayLike,
     v3_R: ArrayLike,
+    P_R: ArrayLike,
+    m1_R: ArrayLike,
+    m2_R: ArrayLike,
+    m3_R: ArrayLike,
+    E_R: ArrayLike,
+    gamma: float,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
-) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
-    """
-    Compute the advection upwinding fluxes.
-
-    Args:
-        rho_L (ArrayLike): Density on the left side.
-        v1_L (ArrayLike): Principle velocity component on the left side.
-        v2_L (ArrayLike): First transverse velocity component on the left side.
-        v3_L (ArrayLike): Second transverse velocity component on the left side.
-        rho_R (ArrayLike): Density on the right side.
-        v1_R (ArrayLike): Principle velocity component on the right side.
-        v2_R (ArrayLike): First transverse velocity component on the right side.
-        v3_R (ArrayLike): Second transverse velocity component on the right side.
-        passives_L (Optional[ArrayLike]): Primitive passive scalars on the left side.
-        passives_R (Optional[ArrayLike]): Primitive passive scalars on the right side.
-
-    Returns:
-        Tuple[ArrayLike, ...]: Advection upwinding fluxes.
-        - F_rho (ArrayLike): Density flux.
-        - F_v1 (ArrayLike): Principle velocity flux.
-        - F_v2 (ArrayLike): First transverse velocity flux.
-        - F_v3 (ArrayLike): Second transverse velocity flux.
-        - F_passives (Optional[ArrayLike]): Passive scalars flux with shape
-            (n_passives, ...). None if either `passives_L` or `passives_R` are None.
-    """
-    v = cp.where(cp.abs(v1_L) > cp.abs(v1_R), v1_L, v1_R)
-    F_rho = _upwind(rho_L, rho_R, v)
-    F_v1 = _upwind(v1_L, v1_R, v)
-    F_v2 = _upwind(v2_L, v2_R, v)
-    F_v3 = _upwind(v3_L, v3_R, v)
-    F_passives = (
-        _upwind(passives_L, passives_R, v)
-        if (passives_L is not None and passives_R is not None)
-        else None
-    )
-    return F_rho, F_v1, F_v2, F_v3, F_passives
-
-
-def _conservative_array(
-    rho: ArrayLike,
-    v1: ArrayLike,
-    v2: ArrayLike,
-    v3: ArrayLike,
-    P: ArrayLike,
-    gamma: float,
-    passives: Optional[ArrayLike] = None,
-    m1: Optional[ArrayLike] = None,
-    m2: Optional[ArrayLike] = None,
-    m3: Optional[ArrayLike] = None,
-    E: Optional[ArrayLike] = None,
-    conserved_passives: Optional[ArrayLike] = None,
-) -> ArrayLike:
-    """
-    Create an array of conservative variables.
-
-    Args:
-        rho (ArrayLike): Density.
-        v1 (ArrayLike): Velocity in a direction.
-        v2 (ArrayLike): Velocity in another direction.
-        v3 (ArrayLike): Velocity in yet another direction.
-        P (ArrayLike): Pressure.
-        gamma (float): Adiabatic index.
-        passives (Optional[ArrayLike]): Primitive passive scalars.
-        m1 (Optional[ArrayLike]): Momentum in a direction. If None, momentum will be
-            computed from the primitive variables. Otherwise, the primitive variables
-            are ignored.
-        m2 (Optional[ArrayLike]): Momentum in another direction.
-        m3 (Optional[ArrayLike]): Momentum in yet another direction.
-        E (Optional[ArrayLike]): Total energy.
-        conserved_passives (Optional[ArrayLike]): Conservative passives.
-
-    Returns:
-        U (ArrayLike): Array of conservative variables with shape (n_vars, ...).
-        - U[0]: Density.
-        - U[1]: Momentum in a direction.
-        - U[2]: Momentum in another direction.
-        - U[3]: Momentum in yet another direction.
-        - U[4]: Total energy.
-        - U[5:]: Conservative passives if `passives` is not None.
-    """
-    HAS_PASSIVES = passives is not None
-    U = cp.empty(
-        (5 + (cast(ArrayLike, passives).shape[0] if HAS_PASSIVES else 0),) + rho.shape,
-        dtype=rho.dtype,
-    )
-    if m1 is not None:
-        U[0] = rho
-        U[1] = m1
-        U[2] = m2
-        U[3] = m3
-        U[4] = E
-    else:
-        U[0], U[1], U[2], U[3], U[4], conserved_passives = (
-            conservatives_from_primitives(rho, v1, v2, v3, P, gamma, passives)
+    conserved_passives_L: Optional[ArrayLike] = None,
+    conserved_passives_R: Optional[ArrayLike] = None,
+) -> Tuple[ArrayLike, ...]:
+    COMPUTE_PRIMITIVES = m1_L is None
+    if COMPUTE_PRIMITIVES:
+        _, m1_L, m2_L, m3_L, E_L, conserved_passives_L = conservatives_from_primitives(
+            rho_L, v1_L, v2_L, v3_L, P_L, gamma, passives_L
         )
-    if HAS_PASSIVES:
-        U[5:] = conserved_passives
-    return U
+        _, m1_R, m2_R, m3_R, E_R, conserved_passives_R = conservatives_from_primitives(
+            rho_R, v1_R, v2_R, v3_R, P_R, gamma, passives_R
+        )
+    return rs(
+        rho_L,
+        v1_L,
+        v2_L,
+        v3_L,
+        P_L,
+        m1_L,
+        m2_L,
+        m3_L,
+        E_L,
+        rho_R,
+        v1_R,
+        v2_R,
+        v3_R,
+        P_R,
+        m1_R,
+        m2_R,
+        m3_R,
+        E_R,
+        gamma,
+        passives_L=passives_L,
+        passives_R=passives_R,
+        conserved_passives_L=conserved_passives_L,
+        conserved_passives_R=conserved_passives_R,
+    )
+
+
+@fuse
+def _llf(
+    rho_L: ArrayLike,
+    v1_L: ArrayLike,
+    v2_L: ArrayLike,
+    v3_L: ArrayLike,
+    P_L: ArrayLike,
+    m1_L: ArrayLike,
+    m2_L: ArrayLike,
+    m3_L: ArrayLike,
+    E_L: ArrayLike,
+    rho_R: ArrayLike,
+    v1_R: ArrayLike,
+    v2_R: ArrayLike,
+    v3_R: ArrayLike,
+    P_R: ArrayLike,
+    m1_R: ArrayLike,
+    m2_R: ArrayLike,
+    m3_R: ArrayLike,
+    E_R: ArrayLike,
+    gamma: float,
+    passives_L: Optional[ArrayLike] = None,
+    passives_R: Optional[ArrayLike] = None,
+    conserved_passives_L: Optional[ArrayLike] = None,
+    conserved_passives_R: Optional[ArrayLike] = None,
+) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
+    # assign flux arrays
+    F_rho_L, F_m1_L, F_m2_L, F_m3_L, F_E_L, F_passives_L = fluxes(
+        rho_L, v1_L, v2_L, v3_L, P_L, gamma, passives_L
+    )
+    F_rho_R, F_m1_R, F_m2_R, F_m3_R, F_E_R, F_passives_R = fluxes(
+        rho_R, v1_R, v2_R, v3_R, P_R, gamma, passives_R
+    )
+
+    # compute the max wave speeds
+    c_L = sound_speed(rho_L, P_L, gamma) + cp.abs(v1_L)
+    c_R = sound_speed(rho_R, P_R, gamma) + cp.abs(v1_R)
+    c_max = cp.maximum(c_L, c_R)
+
+    # compute the Lax-Friedrichs fluxes
+    F_rho = _llf_operator(F_rho_L, F_rho_R, rho_L, rho_R, c_max)
+    F_m1 = _llf_operator(F_m1_L, F_m1_R, m1_L, m1_R, c_max)
+    F_m2 = _llf_operator(F_m2_L, F_m2_R, m2_L, m2_R, c_max)
+    F_m3 = _llf_operator(F_m3_L, F_m3_R, m3_L, m3_R, c_max)
+    F_E = _llf_operator(F_E_L, F_E_R, E_L, E_R, c_max)
+    F_conserved_passives = _llf_operator(
+        F_passives_L, F_passives_R, conserved_passives_L, conserved_passives_R, c_max
+    )
+
+    # return the fluxes
+    return F_rho, F_m1, F_m2, F_m3, F_E, F_conserved_passives
+
+
+@fuse
+def _llf_operator(
+    F_L: ArrayLike, F_R: ArrayLike, U_L: ArrayLike, U_R: ArrayLike, c_max: ArrayLike
+) -> ArrayLike:
+    return 0.5 * (F_L + F_R - c_max * (U_R - U_L)) if F_L is not None else None
 
 
 @fuse
@@ -285,28 +280,27 @@ def llf(
     v2_L: ArrayLike,
     v3_L: ArrayLike,
     P_L: ArrayLike,
+    m1_L: ArrayLike,
+    m2_L: ArrayLike,
+    m3_L: ArrayLike,
+    E_L: ArrayLike,
     rho_R: ArrayLike,
     v1_R: ArrayLike,
     v2_R: ArrayLike,
     v3_R: ArrayLike,
     P_R: ArrayLike,
+    m1_R: ArrayLike,
+    m2_R: ArrayLike,
+    m3_R: ArrayLike,
+    E_R: ArrayLike,
     gamma: float,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
-    m1_L: Optional[ArrayLike] = None,
-    m2_L: Optional[ArrayLike] = None,
-    m3_L: Optional[ArrayLike] = None,
-    E_L: Optional[ArrayLike] = None,
-    m1_R: Optional[ArrayLike] = None,
-    m2_R: Optional[ArrayLike] = None,
-    m3_R: Optional[ArrayLike] = None,
-    E_R: Optional[ArrayLike] = None,
     conserved_passives_L: Optional[ArrayLike] = None,
     conserved_passives_R: Optional[ArrayLike] = None,
-) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
+) -> Tuple[ArrayLike, ...]:
     """
-    Compute the Lax-Friedrichs fluxes to solve the Riemann problem between the L and R
-    states.
+    Prepare conservative variables for the Riemann solver and call it.
 
     Args:
         rho_L (ArrayLike): Density on the left side.
@@ -314,107 +308,54 @@ def llf(
         v2_L (ArrayLike): First transverse velocity component on the left side.
         v3_L (ArrayLike): Second transverse velocity component on the left side.
         P_L (ArrayLike): Pressure on the left side.
+        m1_L (ArrayLike): Momentum in the principle direction on the left side.
+        m2_L (ArrayLike): Momentum in the first transverse direction on the left side.
+        m3_L (ArrayLike): Momentum in the second transverse direction on the left side.
+        E_L (ArrayLike): Total energy on the left side.
         rho_R (ArrayLike): Density on the right side.
         v1_R (ArrayLike): Principle velocity component on the right side.
         v2_R (ArrayLike): First transverse velocity component on the right side.
         v3_R (ArrayLike): Second transverse velocity component on the right side.
         P_R (ArrayLike): Pressure on the right side.
+        m1_R (ArrayLike): Momentum in the principle direction on the right side.
+        m2_R (ArrayLike): Momentum in the first transverse direction on the right side.
+        m3_R (ArrayLike): Momentum in the second transverse direction on the right
+            side.
+        E_R (ArrayLike): Total energy on the right side.
         gamma (float): Adiabatic index.
         passives_L (Optional[ArrayLike]): Primitive passive scalars on the left side.
         passives_R (Optional[ArrayLike]): Primitive passive scalars on the right side.
-        m1_L (Optional[ArrayLike]): Momentum in the principle direction on the left
-            side. If None, momentum will be computed from the primitive variables.
-        m2_L (Optional[ArrayLike]): Momentum in the first transverse direction on the
+        conserved_passives_L (Optional[ArrayLike]): Conservative passive scalars on the
             left side.
-        m3_L (Optional[ArrayLike]): Momentum in the second transverse direction on the
-            left side.
-        E_L (Optional[ArrayLike]): Total energy on the left side.
-        m1_R (Optional[ArrayLike]): Momentum in the principle direction on the right
-            side.
-        m2_R (Optional[ArrayLike]): Momentum in the first transverse direction on the
+        conserved_passives_R (Optional[ArrayLike]): Conservative passive scalars on the
             right side.
-        m3_R (Optional[ArrayLike]): Momentum in the second transverse direction on the
-            right side.
-        E_R (Optional[ArrayLike]): Total energy on the right side.
-        conserved_passives_L (Optional[ArrayLike]): Passive scalar density
-            (rho*passives) on the left side.
-        conserved_passives_R (Optional[ArrayLike]): Passive scalar density
-            (rho*passives) on the right side.
 
     Returns:
-        Tuple[ArrayLike, ...]: Lax-Friedrichs fluxes.
-        - F_LF_rho (ArrayLike): Density flux.
-        - F_LF_m1 (ArrayLike): Momentum flux in the principle direction.
-        - F_LF_m2 (ArrayLike): Momentum flux in the first transverse direction.
-        - F_LF_m3 (ArrayLike): Momentum flux in the second transverse direction.
-        - F_LF_E (ArrayLike): Total energy flux.
-        - F_LF_passives (Optional[ArrayLike]): Passive scalars flux with shape
-            (n_passives, ...). None if either `passives_L` or `passives_R` are None.
+        Tuple[ArrayLike, ...]: Fluxes.
     """
-    # initialize flux arrays
-    HAS_PASSIVES = passives_L is not None and passives_R is not None
-    out_shape = (
-        5 + (cast(ArrayLike, passives_L).shape[0] if HAS_PASSIVES else 0),
-    ) + rho_L.shape
-    out_type = rho_L.dtype
-    F_L = cp.empty(out_shape, dtype=out_type)
-    F_R = cp.empty(out_shape, dtype=out_type)
-
-    # assign flux arrays
-    F_L[0], F_L[1], F_L[2], F_L[3], F_L[4], F_passives_L = fluxes(
-        rho_L, v1_L, v2_L, v3_L, P_L, gamma, passives_L
-    )
-    F_R[0], F_R[1], F_R[2], F_R[3], F_R[4], F_passives_R = fluxes(
-        rho_R, v1_R, v2_R, v3_R, P_R, gamma, passives_R
-    )
-    if passives_L is not None and passives_R is not None:
-        F_L[5:] = F_passives_L
-        F_R[5:] = F_passives_R
-
-    # compute the max wave speeds
-    c_L = sound_speed(rho_L, P_L, gamma) + cp.abs(v1_L)
-    c_R = sound_speed(rho_R, P_R, gamma) + cp.abs(v1_R)
-    c_max = cp.maximum(c_L, c_R)
-
-    # compute conservative variables if not provided
-    U_L = _conservative_array(
+    return call_riemann_solver(
+        _llf,
         rho_L,
         v1_L,
         v2_L,
         v3_L,
         P_L,
-        gamma,
-        passives_L,
         m1_L,
         m2_L,
         m3_L,
         E_L,
-        conserved_passives_L,
-    )
-    U_R = _conservative_array(
         rho_R,
         v1_R,
         v2_R,
         v3_R,
         P_R,
-        gamma,
-        passives_R,
         m1_R,
         m2_R,
         m3_R,
         E_R,
-        conserved_passives_R,
-    )
-
-    # compute the Lax-Friedrichs fluxes
-    F_LF = 0.5 * (F_L + F_R - c_max * (U_R - U_L))
-
-    # return the fluxes
-    return (
-        F_LF[0],
-        F_LF[1],
-        F_LF[2],
-        F_LF[3],
-        F_LF[4],
-        F_LF[5:] if HAS_PASSIVES else None,
+        gamma,
+        passives_L=passives_L,
+        passives_R=passives_R,
+        conserved_passives_L=conserved_passives_L,
+        conserved_passives_R=conserved_passives_R,
     )
