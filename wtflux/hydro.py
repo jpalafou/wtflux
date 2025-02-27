@@ -1,6 +1,6 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, cast
 
-from . import ArrayLike, cp, fuse
+from . import ArrayLike, fuse, xp
 
 
 @fuse
@@ -23,7 +23,7 @@ def sound_speed(
         ArrayLike: Sound speed.
     """
     sq_sound_speed = gamma * P / rho
-    return cp.sqrt(cp.where(sq_sound_speed > min_c2, sq_sound_speed, min_c2))
+    return xp.sqrt(xp.where(sq_sound_speed > min_c2, sq_sound_speed, min_c2))
 
 
 @fuse
@@ -159,20 +159,20 @@ def call_riemann_solver(
     v2_L: ArrayLike,
     v3_L: ArrayLike,
     P_L: ArrayLike,
-    m1_L: ArrayLike,
-    m2_L: ArrayLike,
-    m3_L: ArrayLike,
-    E_L: ArrayLike,
     rho_R: ArrayLike,
     v1_R: ArrayLike,
     v2_R: ArrayLike,
     v3_R: ArrayLike,
     P_R: ArrayLike,
-    m1_R: ArrayLike,
-    m2_R: ArrayLike,
-    m3_R: ArrayLike,
-    E_R: ArrayLike,
     gamma: float,
+    m1_L: Optional[ArrayLike] = None,
+    m2_L: Optional[ArrayLike] = None,
+    m3_L: Optional[ArrayLike] = None,
+    E_L: Optional[ArrayLike] = None,
+    m1_R: Optional[ArrayLike] = None,
+    m2_R: Optional[ArrayLike] = None,
+    m3_R: Optional[ArrayLike] = None,
+    E_R: Optional[ArrayLike] = None,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
     conserved_passives_L: Optional[ArrayLike] = None,
@@ -192,24 +192,44 @@ def call_riemann_solver(
         v2_L,
         v3_L,
         P_L,
-        m1_L,
-        m2_L,
-        m3_L,
-        E_L,
         rho_R,
         v1_R,
         v2_R,
         v3_R,
         P_R,
+        gamma,
+        m1_L,
+        m2_L,
+        m3_L,
+        E_L,
         m1_R,
         m2_R,
         m3_R,
         E_R,
-        gamma,
-        passives_L=passives_L,
-        passives_R=passives_R,
-        conserved_passives_L=conserved_passives_L,
-        conserved_passives_R=conserved_passives_R,
+        passives_L,
+        passives_R,
+        conserved_passives_L,
+        conserved_passives_R,
+    )
+
+
+@fuse
+def _llf_operator(
+    F_L: Optional[ArrayLike],
+    F_R: Optional[ArrayLike],
+    U_L: Optional[ArrayLike],
+    U_R: Optional[ArrayLike],
+    c_max: Optional[ArrayLike],
+) -> Optional[ArrayLike]:
+    return (
+        0.5
+        * (
+            cast(ArrayLike, F_L)
+            + cast(ArrayLike, F_R)
+            - cast(ArrayLike, c_max) * (cast(ArrayLike, U_R) - cast(ArrayLike, U_L))
+        )
+        if F_L is not None
+        else None
     )
 
 
@@ -220,20 +240,20 @@ def _llf(
     v2_L: ArrayLike,
     v3_L: ArrayLike,
     P_L: ArrayLike,
-    m1_L: ArrayLike,
-    m2_L: ArrayLike,
-    m3_L: ArrayLike,
-    E_L: ArrayLike,
     rho_R: ArrayLike,
     v1_R: ArrayLike,
     v2_R: ArrayLike,
     v3_R: ArrayLike,
     P_R: ArrayLike,
+    gamma: float,
+    m1_L: ArrayLike,
+    m2_L: ArrayLike,
+    m3_L: ArrayLike,
+    E_L: ArrayLike,
     m1_R: ArrayLike,
     m2_R: ArrayLike,
     m3_R: ArrayLike,
     E_R: ArrayLike,
-    gamma: float,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
     conserved_passives_L: Optional[ArrayLike] = None,
@@ -248,9 +268,9 @@ def _llf(
     )
 
     # compute the max wave speeds
-    c_L = sound_speed(rho_L, P_L, gamma) + cp.abs(v1_L)
-    c_R = sound_speed(rho_R, P_R, gamma) + cp.abs(v1_R)
-    c_max = cp.maximum(c_L, c_R)
+    c_L = sound_speed(rho_L, P_L, gamma) + xp.abs(v1_L)
+    c_R = sound_speed(rho_R, P_R, gamma) + xp.abs(v1_R)
+    c_max = xp.maximum(c_L, c_R)
 
     # compute the Lax-Friedrichs fluxes
     F_rho = _llf_operator(F_rho_L, F_rho_R, rho_L, rho_R, c_max)
@@ -267,33 +287,26 @@ def _llf(
 
 
 @fuse
-def _llf_operator(
-    F_L: ArrayLike, F_R: ArrayLike, U_L: ArrayLike, U_R: ArrayLike, c_max: ArrayLike
-) -> ArrayLike:
-    return 0.5 * (F_L + F_R - c_max * (U_R - U_L)) if F_L is not None else None
-
-
-@fuse
 def llf(
     rho_L: ArrayLike,
     v1_L: ArrayLike,
     v2_L: ArrayLike,
     v3_L: ArrayLike,
     P_L: ArrayLike,
-    m1_L: ArrayLike,
-    m2_L: ArrayLike,
-    m3_L: ArrayLike,
-    E_L: ArrayLike,
     rho_R: ArrayLike,
     v1_R: ArrayLike,
     v2_R: ArrayLike,
     v3_R: ArrayLike,
     P_R: ArrayLike,
-    m1_R: ArrayLike,
-    m2_R: ArrayLike,
-    m3_R: ArrayLike,
-    E_R: ArrayLike,
     gamma: float,
+    m1_L: Optional[ArrayLike] = None,
+    m2_L: Optional[ArrayLike] = None,
+    m3_L: Optional[ArrayLike] = None,
+    E_L: Optional[ArrayLike] = None,
+    m1_R: Optional[ArrayLike] = None,
+    m2_R: Optional[ArrayLike] = None,
+    m3_R: Optional[ArrayLike] = None,
+    E_R: Optional[ArrayLike] = None,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
     conserved_passives_L: Optional[ArrayLike] = None,
@@ -308,23 +321,23 @@ def llf(
         v2_L (ArrayLike): First transverse velocity component on the left side.
         v3_L (ArrayLike): Second transverse velocity component on the left side.
         P_L (ArrayLike): Pressure on the left side.
-        m1_L (ArrayLike): Momentum in the principle direction on the left side.
-        m2_L (ArrayLike): Momentum in the first transverse direction on the left side.
-        m3_L (ArrayLike): Momentum in the second transverse direction on the left side.
-        E_L (ArrayLike): Total energy on the left side.
         rho_R (ArrayLike): Density on the right side.
         v1_R (ArrayLike): Principle velocity component on the right side.
         v2_R (ArrayLike): First transverse velocity component on the right side.
         v3_R (ArrayLike): Second transverse velocity component on the right side.
         P_R (ArrayLike): Pressure on the right side.
+        gamma (float): Adiabatic index.
+        passives_L (Optional[ArrayLike]): Primitive passive scalars on the left side.
+        passives_R (Optional[ArrayLike]): Primitive passive scalars on the right side.
+        m1_L (ArrayLike): Momentum in the principle direction on the left side.
+        m2_L (ArrayLike): Momentum in the first transverse direction on the left side.
+        m3_L (ArrayLike): Momentum in the second transverse direction on the left side.
+        E_L (ArrayLike): Total energy on the left side.
         m1_R (ArrayLike): Momentum in the principle direction on the right side.
         m2_R (ArrayLike): Momentum in the first transverse direction on the right side.
         m3_R (ArrayLike): Momentum in the second transverse direction on the right
             side.
         E_R (ArrayLike): Total energy on the right side.
-        gamma (float): Adiabatic index.
-        passives_L (Optional[ArrayLike]): Primitive passive scalars on the left side.
-        passives_R (Optional[ArrayLike]): Primitive passive scalars on the right side.
         conserved_passives_L (Optional[ArrayLike]): Conservative passive scalars on the
             left side.
         conserved_passives_R (Optional[ArrayLike]): Conservative passive scalars on the
@@ -340,22 +353,22 @@ def llf(
         v2_L,
         v3_L,
         P_L,
-        m1_L,
-        m2_L,
-        m3_L,
-        E_L,
         rho_R,
         v1_R,
         v2_R,
         v3_R,
         P_R,
+        gamma,
+        m1_L,
+        m2_L,
+        m3_L,
+        E_L,
         m1_R,
         m2_R,
         m3_R,
         E_R,
-        gamma,
-        passives_L=passives_L,
-        passives_R=passives_R,
-        conserved_passives_L=conserved_passives_L,
-        conserved_passives_R=conserved_passives_R,
+        passives_L,
+        passives_R,
+        conserved_passives_L,
+        conserved_passives_R,
     )

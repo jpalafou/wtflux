@@ -1,30 +1,34 @@
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
-import numpy as np
+import numpy as xp
 
 
-def trivial(func):
+def _trivial(func):
     return func
 
+
+CUPY_AVAILABLE = False
+fuse = _trivial
 
 # determine if CuPy is available
 if not TYPE_CHECKING:
     try:
-        import cupy as cp
+        import cupy as xp
 
         CUPY_AVAILABLE = True
 
-        def fuse(func):
-            return cp.fuse(func)
+        def _fuse(func):
+            return xp.fuse(func)
+
+        fuse = _fuse
 
     except ImportError:
-        cp = np
-        CUPY_AVAILABLE = False
-        fuse = trivial
-else:
-    cp = np
-    CUPY_AVAILABLE = False
-    fuse = trivial
+        pass
 
 # define custom types
-ArrayLike = Union[np.ndarray, cp.ndarray]
+ArrayLike = xp.ndarray
+
+
+# make xp, fuse, and ArrayLike available to the user
+if __name__ == "__main__":
+    __all__ = ["xp", "fuse", "ArrayLike"]

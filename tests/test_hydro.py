@@ -1,6 +1,6 @@
-import numpy as np
 import pytest
 
+from wtflux import xp
 from wtflux.hydro import (
     conservatives_from_primitives,
     fluxes,
@@ -11,17 +11,17 @@ from wtflux.hydro import (
 
 
 def random_hydro_data(N, n_passives=0):
-    rho = np.random.rand(N, N, N)
-    vx = np.random.rand(N, N, N)
-    vy = np.random.rand(N, N, N)
-    vz = np.random.rand(N, N, N)
-    P = np.random.rand(N, N, N)
-    passives = np.random.rand(n_passives, N, N, N) if n_passives > 0 else None
+    rho = xp.random.rand(N, N, N)
+    vx = xp.random.rand(N, N, N)
+    vy = xp.random.rand(N, N, N)
+    vz = xp.random.rand(N, N, N)
+    P = xp.random.rand(N, N, N)
+    passives = xp.random.rand(n_passives, N, N, N) if n_passives > 0 else None
     return rho, vx, vy, vz, P, passives
 
 
 def l2_norm(a, b):
-    return np.mean(np.square(a - b))
+    return xp.mean(xp.square(a - b))
 
 
 def test_sound_speed():
@@ -143,8 +143,6 @@ def test_llf(precompute_conservatives, n_passives):
         vz_R,
         P_R,
         gamma,
-        passives_L,
-        passives_R,
         mx_L,
         my_L,
         mz_L,
@@ -153,6 +151,8 @@ def test_llf(precompute_conservatives, n_passives):
         my_R,
         mz_R,
         E_R,
+        passives_L,
+        passives_R,
         conserved_passives_L,
         conserved_passives_R,
     )
