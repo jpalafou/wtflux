@@ -97,7 +97,7 @@ def conservatives_from_primitives(
         - m2 (ArrayLike): Momentum in another direction.
         - m3 (ArrayLike): Momentum in yet another direction.
         - E (ArrayLike): Total energy.
-        - consserved_passives (Optional[ArrayLike]): Conservative passives
+        - conserved_passives (Optional[ArrayLike]): Conservative passives
             (rho*passives). None if `passives` is None.
     """
     m1 = rho * v1
@@ -105,8 +105,8 @@ def conservatives_from_primitives(
     m3 = rho * v3
     K = 0.5 * rho * (v1**2 + v2**2 + v3**2)
     E = K + P / (gamma - 1)
-    consserved_passives = passives * rho if passives is not None else None
-    return rho, m1, m2, m3, E, consserved_passives
+    conserved_passives = passives * rho if passives is not None else None
+    return rho, m1, m2, m3, E, conserved_passives
 
 
 @fuse
@@ -138,8 +138,8 @@ def fluxes(
         - F_m2 (ArrayLike): Momentum flux in the first transverse direction.
         - F_m3 (ArrayLike): Momentum flux in the second transverse direction.
         - F_E (ArrayLike): Total energy flux.
-        - F_passives (Optional[ArrayLike]): Passive scalars flux. None if `passives` is
-            None.
+        - F_conserved_passives (Optional[ArrayLike]): Passive scalars flux. None if
+            `passives` is None.
     """
     F_rho = rho * v1
     F_m1 = rho * v1**2 + P
@@ -147,8 +147,8 @@ def fluxes(
     F_m3 = rho * v1 * v3
     K = 0.5 * rho * (v1**2 + v2**2 + v3**2)
     F_E = (K + P / (gamma - 1) + P) * v1
-    F_passives = passives * v1 if passives is not None else None
-    return F_rho, F_m1, F_m2, F_m3, F_E, F_passives
+    F_conserved_passives = rho * passives * v1 if passives is not None else None
+    return F_rho, F_m1, F_m2, F_m3, F_E, F_conserved_passives
 
 
 @fuse
@@ -177,7 +177,7 @@ def call_riemann_solver(
     passives_R: Optional[ArrayLike] = None,
     conserved_passives_L: Optional[ArrayLike] = None,
     conserved_passives_R: Optional[ArrayLike] = None,
-) -> Tuple[ArrayLike, ...]:
+) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
     COMPUTE_PRIMITIVES = m1_L is None
     if COMPUTE_PRIMITIVES:
         _, m1_L, m2_L, m3_L, E_L, conserved_passives_L = conservatives_from_primitives(
@@ -260,10 +260,10 @@ def _llf(
     conserved_passives_R: Optional[ArrayLike] = None,
 ) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
     # assign flux arrays
-    F_rho_L, F_m1_L, F_m2_L, F_m3_L, F_E_L, F_passives_L = fluxes(
+    F_rho_L, F_m1_L, F_m2_L, F_m3_L, F_E_L, F_conserved_passives_L = fluxes(
         rho_L, v1_L, v2_L, v3_L, P_L, gamma, passives_L
     )
-    F_rho_R, F_m1_R, F_m2_R, F_m3_R, F_E_R, F_passives_R = fluxes(
+    F_rho_R, F_m1_R, F_m2_R, F_m3_R, F_E_R, F_conserved_passives_R = fluxes(
         rho_R, v1_R, v2_R, v3_R, P_R, gamma, passives_R
     )
 
@@ -279,7 +279,11 @@ def _llf(
     F_m3 = _llf_operator(F_m3_L, F_m3_R, m3_L, m3_R, c_max)
     F_E = _llf_operator(F_E_L, F_E_R, E_L, E_R, c_max)
     F_conserved_passives = _llf_operator(
-        F_passives_L, F_passives_R, conserved_passives_L, conserved_passives_R, c_max
+        F_conserved_passives_L,
+        F_conserved_passives_R,
+        conserved_passives_L,
+        conserved_passives_R,
+        c_max,
     )
 
     # return the fluxes
@@ -311,7 +315,7 @@ def llf(
     passives_R: Optional[ArrayLike] = None,
     conserved_passives_L: Optional[ArrayLike] = None,
     conserved_passives_R: Optional[ArrayLike] = None,
-) -> Tuple[ArrayLike, ...]:
+) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
     """
     Prepare conservative variables for the Riemann solver and call it.
 
@@ -345,6 +349,13 @@ def llf(
 
     Returns:
         Tuple[ArrayLike, ...]: Fluxes.
+        - F_rho (ArrayLike): Density flux.
+        - F_m1 (ArrayLike): Momentum flux in the principle direction.
+        - F_m2 (ArrayLike): Momentum flux in the first transverse direction.
+        - F_m3 (ArrayLike): Momentum
+        - F_E (ArrayLike): Total energy flux.
+        - F_passives (Optional[ArrayLike]): Passive scalars flux. None if `passives` is
+            None.
     """
     return call_riemann_solver(
         _llf,
