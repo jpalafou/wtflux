@@ -153,7 +153,12 @@ def fluxes(
 
 @fuse
 def call_riemann_solver(
-    rs: Callable[..., Tuple[ArrayLike, ...]],
+    rs: Callable[
+        ...,
+        Tuple[
+            ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]
+        ],
+    ],
     rho_L: ArrayLike,
     v1_L: ArrayLike,
     v2_L: ArrayLike,
