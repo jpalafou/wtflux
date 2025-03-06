@@ -25,3 +25,6 @@ test = ["pytest"]
 
 [tool.setuptools]
 packages = ["wtflux"]
+
+[tool.setuptools.package-data]
+"wtflux" = ["py.typed"]
