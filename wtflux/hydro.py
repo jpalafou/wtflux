@@ -1,6 +1,6 @@
 from typing import Callable, Optional, Tuple, cast
 
-from . import ArrayLike, fuse, xp
+from .backend import ArrayLike, fuse, xp
 
 
 @fuse

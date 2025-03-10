@@ -1,6 +1,6 @@
 import pytest
 
-from wtflux import xp
+from wtflux.backend import xp
 from wtflux.hydro import (
     conservatives_from_primitives,
     fluxes,

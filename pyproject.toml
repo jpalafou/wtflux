@@ -33,3 +33,6 @@ packages = ["wtflux"]
 [[tool.mypy.overrides]]
 module = "cupy"
 ignore_missing_imports = true
+
+[tool.isort]
+known_first_party = ["wtflux"]
