@@ -1,34 +1,54 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
-import numpy as xp
+import numpy as np
+
+# initialize global variable types
+xp: Any
+fuse: Callable[..., Any]
+ArrayLike: Any
 
 
-def _trivial(func):
+def trivial_wrapper(func):
     return func
 
 
-CUPY_AVAILABLE = False
-fuse = _trivial
+def init_numpy():
+    """Initialize NumPy as the default backend."""
+    global xp, fuse, ArrayLike
 
-# determine if CuPy is available
-if not TYPE_CHECKING:
+    xp = np
+    fuse = trivial_wrapper
+    ArrayLike = np.ndarray
+
+
+def init_cupy():
+    """Initialize CuPy as the default backend."""
+    global xp, fuse, ArrayLike
+    if TYPE_CHECKING:
+        init_numpy()
+        return
     try:
-        import cupy as xp
+        import cupy as cp
 
-        CUPY_AVAILABLE = True
-
-        def _fuse(func):
-            return xp.fuse(func)
-
-        fuse = _fuse
-
-    except ImportError:
-        pass
-
-# define custom types
-ArrayLike = xp.ndarray
+        xp = cp
+        fuse = cp.fuse
+        ArrayLike = cp.ndarray
+    except Exception:
+        init_numpy()
 
 
-# make xp, fuse, and ArrayLike available to the user
-if __name__ == "__main__":
-    __all__ = ["xp", "fuse", "ArrayLike"]
+def set_backend(backend: Literal["numpy", "cupy"]):
+    """Switch between NumPy and CuPy at runtime."""
+    if backend.lower() == "cupy":
+        init_cupy()
+    elif backend.lower() == "numpy":
+        init_numpy()
+    else:
+        raise ValueError("Invalid backend. Choose 'numpy' or 'cupy'.")
+
+
+# Default to NumPy
+set_backend("numpy")
+
+# Expose the following functions and classes
+__all__ = ["xp", "fuse", "ArrayLike", "set_backend"]

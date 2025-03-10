@@ -28,3 +28,8 @@ packages = ["wtflux"]
 
 [tool.setuptools.package-data]
 "wtflux" = ["py.typed"]
+
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = "cupy"
+ignore_missing_imports = true
