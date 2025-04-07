@@ -37,8 +37,7 @@ def sound_speed(
     Returns:
         ArrayLike: Sound speed.
     """
-    sq_sound_speed = gamma * P / rho
-    return xp.sqrt(xp.where(sq_sound_speed > min_c2, sq_sound_speed, min_c2))
+    return xp.sqrt(xp.maximum(gamma * P / rho, min_c2))
 
 
 @fuse
@@ -446,11 +445,13 @@ def _hllc(
     P_star = (rc_R * P_L + rc_L * P_R + rc_L * rc_R * (v1_L - v1_R)) / vP_star_denom
 
     # Star region conservative variables
-    r_star_L = rho_L * (s_L - v1_L) / (s_L - v_star)
-    r_star_R = rho_R * (s_R - v1_R) / (s_R - v_star)
+    r_star_L_denom = avoid_0(s_L - v1_L, 1e-16)
+    r_star_R_denom = avoid_0(s_R - v1_R, 1e-16)
     e_star_L_denom = avoid_0(s_L - v_star, 1e-16)
-    e_star_L = ((s_L - v1_L) * E_L - P_L * v1_L + P_star * v_star) / e_star_L_denom
     e_star_R_denom = avoid_0(s_R - v_star, 1e-16)
+    r_star_L = rho_L * (s_L - v1_L) / r_star_L_denom
+    r_star_R = rho_R * (s_R - v1_R) / r_star_R_denom
+    e_star_L = ((s_L - v1_L) * E_L - P_L * v1_L + P_star * v_star) / e_star_L_denom
     e_star_R = ((s_R - v1_R) * E_R - P_R * v1_R + P_star * v_star) / e_star_R_denom
 
     # Star region conservative variables
