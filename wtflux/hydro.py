@@ -4,6 +4,21 @@ from .backend import ArrayLike, fuse, xp
 
 
 @fuse
+def avoid_0(arr: ArrayLike, tol: float) -> ArrayLike:
+    """
+    Avoid division by zero.
+
+    Args:
+        arr (ArrayLike): Input array.
+        tol (float): Tolerance.
+
+    Returns:
+        ArrayLike: Array with values below tol replaced by tol.
+    """
+    return xp.where(xp.abs(arr) < tol, xp.where(arr < tol, -tol, tol), arr)
+
+
+@fuse
 def sound_speed(
     rho: ArrayLike,
     P: ArrayLike,
@@ -317,10 +332,7 @@ def _llf(
     F_m2 = _llf_operator(F_m2_L, F_m2_R, m2_L, m2_R, c_max)
     F_m3 = _llf_operator(F_m3_L, F_m3_R, m3_L, m3_R, c_max)
     F_E = _llf_operator(F_E_L, F_E_R, E_L, E_R, c_max)
-    if not any(
-        x is None
-        for x in [passives_L, passives_R, conserved_passives_L, conserved_passives_R]
-    ):
+    if not any(x is None for x in [passives_L, passives_R]):
         F_conserved_passives = _llf_operator(
             F_conserved_passives_L,
             F_conserved_passives_R,
@@ -429,14 +441,17 @@ def _hllc(
     rc_L = rho_L * (v1_L - s_L)
     rc_R = rho_R * (s_R - v1_R)
 
-    v_star = (rc_R * v1_R + rc_L * v1_L + (P_L - P_R)) / (rc_R + rc_L)
-    P_star = (rc_R * P_L + rc_L * P_R + rc_L * rc_R * (v1_L - v1_R)) / (rc_R + rc_L)
+    vP_star_denom = avoid_0(rc_L + rc_R, 1e-16)
+    v_star = (rc_R * v1_R + rc_L * v1_L + (P_L - P_R)) / vP_star_denom
+    P_star = (rc_R * P_L + rc_L * P_R + rc_L * rc_R * (v1_L - v1_R)) / vP_star_denom
 
     # Star region conservative variables
     r_star_L = rho_L * (s_L - v1_L) / (s_L - v_star)
     r_star_R = rho_R * (s_R - v1_R) / (s_R - v_star)
-    e_star_L = ((s_L - v1_L) * E_L - P_L * v1_L + P_star * v_star) / (s_L - v_star)
-    e_star_R = ((s_R - v1_R) * E_R - P_R * v1_R + P_star * v_star) / (s_R - v_star)
+    e_star_L_denom = avoid_0(s_L - v_star, 1e-16)
+    e_star_L = ((s_L - v1_L) * E_L - P_L * v1_L + P_star * v_star) / e_star_L_denom
+    e_star_R_denom = avoid_0(s_R - v_star, 1e-16)
+    e_star_R = ((s_R - v1_R) * E_R - P_R * v1_R + P_star * v_star) / e_star_R_denom
 
     # Star region conservative variables
     r_gdv = xp.where(
@@ -460,11 +475,10 @@ def _hllc(
     F_E = v_gdv * (e_gdv + P_gdv)
     F_m2 = F_rho * xp.where(v_star > 0, v2_L, v2_R)
     F_m3 = F_rho * xp.where(v_star > 0, v3_L, v3_R)
-    if not any(
-        x is None
-        for x in [passives_L, passives_R, conserved_passives_L, conserved_passives_R]
-    ):
-        F_conserved_passives = F_rho * xp.where(v_star > 0, passives_L, passives_R)
+    if not any(x is None for x in [passives_L, passives_R]):
+        F_conserved_passives = F_rho[xp.newaxis, ...] * xp.where(
+            v_star > 0, passives_L, passives_R
+        )
     else:
         F_conserved_passives = None
 
