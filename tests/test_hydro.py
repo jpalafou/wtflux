@@ -4,6 +4,7 @@ from wtflux.backend import xp
 from wtflux.hydro import (
     conservatives_from_primitives,
     fluxes,
+    hllc,
     llf,
     primitives_from_conservatives,
     sound_speed,
@@ -159,9 +160,10 @@ def test_fluxes(n_passives):
     fluxes(rho, vx, vy, vz, P, gamma, passives)
 
 
+@pytest.mark.parametrize("riemann_solver", [llf, hllc])
 @pytest.mark.parametrize("primitive_inputs", [True, False])
 @pytest.mark.parametrize("n_passives", [0, 1, 2, 3])
-def test_llf(primitive_inputs, n_passives):
+def test_riemann_call(riemann_solver, primitive_inputs, n_passives):
     """
     Test the LLF flux calculation.
     """
@@ -169,7 +171,7 @@ def test_llf(primitive_inputs, n_passives):
     gamma = 5 / 3
     rho_L, vx_L, vy_L, vz_L, P_L, passives_L = random_hydro_data(N, n_passives)
     rho_R, vx_R, vy_R, vz_R, P_R, passives_R = random_hydro_data(N, n_passives)
-    llf(
+    riemann_solver(
         rho_L,
         vx_L,
         vy_L,
@@ -187,8 +189,9 @@ def test_llf(primitive_inputs, n_passives):
     )
 
 
+@pytest.mark.parametrize("riemann_solver", [llf, hllc])
 @pytest.mark.parametrize("primitive_inputs", [True, False])
-def test_llf_with_passives(primitive_inputs):
+def test_llf_with_passives(riemann_solver, primitive_inputs):
     """
     Test that the the LLF flux calculation is unchanged by passive variables.
     """
@@ -197,7 +200,7 @@ def test_llf_with_passives(primitive_inputs):
     rho_L, vx_L, vy_L, vz_L, P_L, passives_L = random_hydro_data(N, 1)
     rho_R, vx_R, vy_R, vz_R, P_R, passives_R = random_hydro_data(N, 1)
 
-    F = llf(
+    F = riemann_solver(
         rho_L,
         vx_L,
         vy_L,
@@ -211,7 +214,7 @@ def test_llf_with_passives(primitive_inputs):
         gamma,
         primitives=primitive_inputs,
     )
-    F_with_passives = llf(
+    F_with_passives = riemann_solver(
         rho_L,
         vx_L,
         vy_L,

@@ -317,7 +317,10 @@ def _llf(
     F_m2 = _llf_operator(F_m2_L, F_m2_R, m2_L, m2_R, c_max)
     F_m3 = _llf_operator(F_m3_L, F_m3_R, m3_L, m3_R, c_max)
     F_E = _llf_operator(F_E_L, F_E_R, E_L, E_R, c_max)
-    if not any(x is None for x in [F_conserved_passives_L, F_conserved_passives_R]):
+    if not any(
+        x is None
+        for x in [passives_L, passives_R, conserved_passives_L, conserved_passives_R]
+    ):
         F_conserved_passives = _llf_operator(
             F_conserved_passives_L,
             F_conserved_passives_R,
@@ -387,4 +390,148 @@ def llf(
         passives_L,
         passives_R,
         primitives,
+    )
+
+
+@fuse
+def _hllc(
+    rho_L: ArrayLike,
+    v1_L: ArrayLike,
+    v2_L: ArrayLike,
+    v3_L: ArrayLike,
+    P_L: ArrayLike,
+    m1_L: ArrayLike,
+    m2_L: ArrayLike,
+    m3_L: ArrayLike,
+    E_L: ArrayLike,
+    rho_R: ArrayLike,
+    v1_R: ArrayLike,
+    v2_R: ArrayLike,
+    v3_R: ArrayLike,
+    P_R: ArrayLike,
+    m1_R: ArrayLike,
+    m2_R: ArrayLike,
+    m3_R: ArrayLike,
+    E_R: ArrayLike,
+    gamma: float,
+    passives_L: Optional[ArrayLike],
+    conserved_passives_L: Optional[ArrayLike],
+    passives_R: Optional[ArrayLike],
+    conserved_passives_R: Optional[ArrayLike],
+) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
+    c_L = sound_speed(rho_L, P_L, gamma) + xp.abs(v1_L)
+    c_R = sound_speed(rho_R, P_R, gamma) + xp.abs(v1_R)
+    c_max = xp.maximum(c_L, c_R)
+
+    s_L = xp.minimum(v1_L, v1_R) - c_max
+    s_R = xp.maximum(v1_L, v1_R) + c_max
+
+    rc_L = rho_L * (v1_L - s_L)
+    rc_R = rho_R * (s_R - v1_R)
+
+    v_star = (rc_R * v1_R + rc_L * v1_L + (P_L - P_R)) / (rc_R + rc_L)
+    P_star = (rc_R * P_L + rc_L * P_R + rc_L * rc_R * (v1_L - v1_R)) / (rc_R + rc_L)
+
+    # Star region conservative variables
+    r_star_L = rho_L * (s_L - v1_L) / (s_L - v_star)
+    r_star_R = rho_R * (s_R - v1_R) / (s_R - v_star)
+    e_star_L = ((s_L - v1_L) * E_L - P_L * v1_L + P_star * v_star) / (s_L - v_star)
+    e_star_R = ((s_R - v1_R) * E_R - P_R * v1_R + P_star * v_star) / (s_R - v_star)
+
+    # Star region conservative variables
+    r_gdv = xp.where(
+        s_L > 0,
+        rho_L,
+        xp.where(v_star > 0, r_star_L, xp.where(s_R > 0, r_star_R, rho_R)),
+    )
+    v_gdv = xp.where(
+        s_L > 0, v1_L, xp.where(v_star > 0, v_star, xp.where(s_R > 0, v_star, v1_R))
+    )
+    P_gdv = xp.where(
+        s_L > 0, P_L, xp.where(v_star > 0, P_star, xp.where(s_R > 0, P_star, P_R))
+    )
+    e_gdv = xp.where(
+        s_L > 0, E_L, xp.where(v_star > 0, e_star_L, xp.where(s_R > 0, e_star_R, E_R))
+    )
+
+    # Fluxes
+    F_rho = r_gdv * v_gdv
+    F_m1 = F_rho * v_gdv + P_gdv
+    F_E = v_gdv * (e_gdv + P_gdv)
+    F_m2 = F_rho * xp.where(v_star > 0, v2_L, v2_R)
+    F_m3 = F_rho * xp.where(v_star > 0, v3_L, v3_R)
+    if not any(
+        x is None
+        for x in [passives_L, passives_R, conserved_passives_L, conserved_passives_R]
+    ):
+        F_conserved_passives = F_rho * xp.where(v_star > 0, passives_L, passives_R)
+    else:
+        F_conserved_passives = None
+
+    return F_rho, F_m1, F_m2, F_m3, F_E, F_conserved_passives
+
+
+def hllc(
+    rho_L: ArrayLike,
+    v1_L: ArrayLike,
+    v2_L: ArrayLike,
+    v3_L: ArrayLike,
+    P_L: ArrayLike,
+    rho_R: ArrayLike,
+    v1_R: ArrayLike,
+    v2_R: ArrayLike,
+    v3_R: ArrayLike,
+    P_R: ArrayLike,
+    gamma: float,
+    passives_L: Optional[ArrayLike] = None,
+    passives_R: Optional[ArrayLike] = None,
+    primitives: bool = True,
+) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
+    """
+    Compute the HLLC fluxes.
+
+    Args:
+        rho_L (ArrayLike): Left density.
+        v1_L (ArrayLike): Left principal velocity component.
+        v2_L (ArrayLike): Left first transverse velocity component.
+        v3_L (ArrayLike): Left second transverse velocity component.
+        P_L (ArrayLike): Left pressure.
+        rho_R (ArrayLike): Right density.
+        v1_R (ArrayLike): Right principal velocity component.
+        v2_R (ArrayLike): Right first transverse velocity component.
+        v3_R (ArrayLike): Right second transverse velocity component.
+        P_R (ArrayLike): Right pressure.
+        gamma (float): Adiabatic index.
+        passives_L (Optional[ArrayLike]): Left passive scalars density
+            (rho*passives).
+        passives_R (Optional[ArrayLike]): Right passive scalars density
+            (rho*passives).
+        primitives (bool): Whether the input variables are primitive variables. If
+            False, they are considered conservative variables.
+
+    Returns:
+        Tuple[ArrayLike, ...]: Fluxes.
+        - F_rho (ArrayLike): Density flux.
+        - F_m1 (ArrayLike): Momentum flux in the principal direction.
+        - F_m2 (ArrayLike): Momentum flux in the first transverse direction.
+        - F_m3 (ArrayLike): Momentum flux in the second transverse direction.
+        - F_E (ArrayLike): Total energy flux.
+        - F_conserved_passives (Optional[ArrayLike]): Passive scalars flux. None if
+            `passives` is None.
+    """
+    return call_riemann_solver(
+        _hllc,
+        rho_L,
+        v1_L,
+        v2_L,
+        v3_L,
+        P_L,
+        rho_R,
+        v1_R,
+        v2_R,
+        v3_R,
+        P_R,
+        gamma,
+        passives_L,
+        passives_R,
     )
