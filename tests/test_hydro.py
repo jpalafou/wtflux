@@ -159,9 +159,9 @@ def test_fluxes(n_passives):
     fluxes(rho, vx, vy, vz, P, gamma, passives)
 
 
-@pytest.mark.parametrize("precompute_conservatives", [True, False])
+@pytest.mark.parametrize("primitive_inputs", [True, False])
 @pytest.mark.parametrize("n_passives", [0, 1, 2, 3])
-def test_llf(precompute_conservatives, n_passives):
+def test_llf(primitive_inputs, n_passives):
     """
     Test the LLF flux calculation.
     """
@@ -169,16 +169,6 @@ def test_llf(precompute_conservatives, n_passives):
     gamma = 5 / 3
     rho_L, vx_L, vy_L, vz_L, P_L, passives_L = random_hydro_data(N, n_passives)
     rho_R, vx_R, vy_R, vz_R, P_R, passives_R = random_hydro_data(N, n_passives)
-    if precompute_conservatives:
-        _, mx_L, my_L, mz_L, E_L, conserved_passives_L = conservatives_from_primitives(
-            rho_L, vx_L, vy_L, vz_L, P_L, gamma, passives_L
-        )
-        _, mx_R, my_R, mz_R, E_R, conserved_passives_R = conservatives_from_primitives(
-            rho_R, vx_R, vy_R, vz_R, P_R, gamma, passives_R
-        )
-    else:
-        _, mx_L, my_L, mz_L, E_L, conserved_passives_L = [None] * 6
-        _, mx_R, my_R, mz_R, E_R, conserved_passives_R = [None] * 6
     llf(
         rho_L,
         vx_L,
@@ -191,23 +181,14 @@ def test_llf(precompute_conservatives, n_passives):
         vz_R,
         P_R,
         gamma,
-        mx_L,
-        my_L,
-        mz_L,
-        E_L,
-        mx_R,
-        my_R,
-        mz_R,
-        E_R,
         passives_L,
         passives_R,
-        conserved_passives_L,
-        conserved_passives_R,
+        primitive_inputs,
     )
 
 
-@pytest.mark.parametrize("precompute_conservatives", [True, False])
-def test_llf_with_passives(precompute_conservatives):
+@pytest.mark.parametrize("primitive_inputs", [True, False])
+def test_llf_with_passives(primitive_inputs):
     """
     Test that the the LLF flux calculation is unchanged by passive variables.
     """
@@ -216,90 +197,35 @@ def test_llf_with_passives(precompute_conservatives):
     rho_L, vx_L, vy_L, vz_L, P_L, passives_L = random_hydro_data(N, 1)
     rho_R, vx_R, vy_R, vz_R, P_R, passives_R = random_hydro_data(N, 1)
 
-    w_L = xp.array([rho_L, vx_L, vy_L, vz_L, P_L])
-    w_R = xp.array([rho_R, vx_R, vy_R, vz_R, P_R])
-    w_L_with_passives = xp.concatenate(
-        [xp.array([rho_L, vx_L, vy_L, vz_L, P_L]), passives_L]
-    )
-    w_R_with_passives = xp.concatenate(
-        [xp.array([rho_R, vx_R, vy_R, vz_R, P_R]), passives_R]
-    )
-
-    if precompute_conservatives:
-        u_L = conservatives_from_primitives(
-            w_L[0], w_L[1], w_L[2], w_L[3], w_L[4], gamma
-        )
-        u_R = conservatives_from_primitives(
-            w_R[0], w_R[1], w_R[2], w_R[3], w_R[4], gamma
-        )
-        u_L_with_passives = conservatives_from_primitives(
-            w_L_with_passives[0],
-            w_L_with_passives[1],
-            w_L_with_passives[2],
-            w_L_with_passives[3],
-            w_L_with_passives[4],
-            gamma,
-            w_L_with_passives[5:],
-        )
-        u_R_with_passives = conservatives_from_primitives(
-            w_R_with_passives[0],
-            w_R_with_passives[1],
-            w_R_with_passives[2],
-            w_R_with_passives[3],
-            w_R_with_passives[4],
-            gamma,
-            w_R_with_passives[5:],
-        )
-    else:
-        u_L = [None] * 5
-        u_R = [None] * 5
-        u_L_with_passives = [None] * 6
-        u_R_with_passives = [None] * 6
     F = llf(
-        w_L[0],
-        w_L[1],
-        w_L[2],
-        w_L[3],
-        w_L[4],
-        w_R[0],
-        w_R[1],
-        w_R[2],
-        w_R[3],
-        w_R[4],
+        rho_L,
+        vx_L,
+        vy_L,
+        vz_L,
+        P_L,
+        rho_R,
+        vx_R,
+        vy_R,
+        vz_R,
+        P_R,
         gamma,
-        u_L[1],
-        u_L[2],
-        u_L[3],
-        u_L[4],
-        u_R[1],
-        u_R[2],
-        u_R[3],
-        u_R[4],
+        primitives=primitive_inputs,
     )
     F_with_passives = llf(
-        w_L_with_passives[0],
-        w_L_with_passives[1],
-        w_L_with_passives[2],
-        w_L_with_passives[3],
-        w_L_with_passives[4],
-        w_R_with_passives[0],
-        w_R_with_passives[1],
-        w_R_with_passives[2],
-        w_R_with_passives[3],
-        w_R_with_passives[4],
+        rho_L,
+        vx_L,
+        vy_L,
+        vz_L,
+        P_L,
+        rho_R,
+        vx_R,
+        vy_R,
+        vz_R,
+        P_R,
         gamma,
-        u_L_with_passives[1],
-        u_L_with_passives[2],
-        u_L_with_passives[3],
-        u_L_with_passives[4],
-        u_R_with_passives[1],
-        u_R_with_passives[2],
-        u_R_with_passives[3],
-        u_R_with_passives[4],
-        w_L_with_passives[5],
-        w_R_with_passives[5],
-        u_L_with_passives[5],
-        u_R_with_passives[5],
+        passives_L,
+        passives_R,
+        primitives=primitive_inputs,
     )
     for i in range(5):
         assert xp.all(F[i] == F_with_passives[i])
