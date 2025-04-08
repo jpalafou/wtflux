@@ -12,17 +12,65 @@ from wtflux.hydro import (
 
 
 def random_hydro_data(N, n_passives=0):
-    rho = xp.random.rand(N, N, N)
-    vx = xp.random.rand(N, N, N)
-    vy = xp.random.rand(N, N, N)
-    vz = xp.random.rand(N, N, N)
-    P = xp.random.rand(N, N, N)
-    passives = xp.random.rand(n_passives, N, N, N) if n_passives > 0 else None
+    X, Y, Z = xp.meshgrid(*([xp.arange(N)] * 3), indexing="ij")
+    noise = xp.random.rand(N, N, N) - 0.7
+    rho = (
+        xp.ones((N, N, N))
+        + 0.1 * xp.sin(2 * xp.pi * X)
+        + 0.1 * xp.cos(2 * xp.pi * Y)
+        + 0.1 * xp.sin(2 * xp.pi * Z)
+        + noise
+    )
+    vx = (
+        xp.ones((N, N, N))
+        + 0.2 * xp.sin(2 * xp.pi * X)
+        + 0.1 * xp.cos(2 * xp.pi * Y)
+        + 0.1 * xp.sin(2 * xp.pi * Z)
+        + noise
+    )
+    vy = (
+        xp.ones((N, N, N))
+        + 0.1 * xp.sin(2 * xp.pi * X)
+        + 0.2 * xp.cos(2 * xp.pi * Y)
+        + 0.1 * xp.sin(2 * xp.pi * Z)
+        + noise
+    )
+    vz = (
+        xp.ones((N, N, N))
+        + 0.1 * xp.sin(2 * xp.pi * X)
+        + 0.1 * xp.cos(2 * xp.pi * Y)
+        + 0.2 * xp.sin(2 * xp.pi * Z)
+        + noise
+    )
+    P = (
+        xp.ones((N, N, N))
+        + 0.3 * xp.sin(2 * xp.pi * X)
+        + 0.3 * xp.cos(2 * xp.pi * Y)
+        + 0.3 * xp.sin(2 * xp.pi * Z)
+        + noise
+    )
+    passives = (
+        xp.ones((n_passives, N, N, N))
+        + 0.1 * xp.sin(2 * xp.pi * X)
+        + 0.1 * xp.cos(2 * xp.pi * Y)
+        + 0.1 * xp.sin(2 * xp.pi * Z)
+        + noise
+        if n_passives > 0
+        else None
+    )
     return rho, vx, vy, vz, P, passives
+
+    # rho = xp.random.rand(N, N, N)
+    # vx = xp.random.rand(N, N, N)
+    # vy = xp.random.rand(N, N, N)
+    # vz = xp.random.rand(N, N, N)
+    # P = xp.random.rand(N, N, N)
+    # passives = xp.random.rand(n_passives, N, N, N) if n_passives > 0 else None
+    # return rho, vx, vy, vz, P, passives
 
 
 def l2_norm(a, b):
-    return xp.mean(xp.square(a - b))
+    return xp.sqrt(xp.mean(xp.square(a - b)))
 
 
 def test_sound_speed():
@@ -43,8 +91,6 @@ def test_primitive_conservative_invertability(N, gamma, n_passives):
     Convert primitive variables to conservative variables and back to primitive
     variables.
     """
-    HAS_PASSIVES = n_passives > 0
-
     # define primitive variables
     rho, vx, vy, vz, P, passives = random_hydro_data(N, n_passives)
 
@@ -64,7 +110,7 @@ def test_primitive_conservative_invertability(N, gamma, n_passives):
     assert l2_norm(vy, _vy) < 1e-15
     assert l2_norm(vz, _vz) < 1e-15
     assert l2_norm(P, _P) < 1e-15
-    if HAS_PASSIVES:
+    if n_passives > 0:
         assert l2_norm(passives, _passives) < 1e-15
 
 
@@ -76,8 +122,6 @@ def test_conservative_primitive_invertability(N, gamma, n_passives):
     Convert conservative variables to primitive variables and back to conservative
     variables.
     """
-    HAS_PASSIVES = n_passives > 0
-
     # define conservative variables
     rho, mx, my, mz, E, passives = random_hydro_data(N, n_passives)
 
@@ -97,7 +141,7 @@ def test_conservative_primitive_invertability(N, gamma, n_passives):
     assert l2_norm(my, _my) < 1e-15
     assert l2_norm(mz, _mz) < 1e-15
     assert l2_norm(E, _E) < 1e-15
-    if HAS_PASSIVES:
+    if n_passives > 0:
         assert l2_norm(passives, _passives) < 1e-15
 
 
@@ -163,15 +207,28 @@ def test_fluxes(n_passives):
 @pytest.mark.parametrize("riemann_solver", [llf, hllc])
 @pytest.mark.parametrize("primitive_inputs", [True, False])
 @pytest.mark.parametrize("n_passives", [0, 1, 2, 3])
-def test_riemann_call(riemann_solver, primitive_inputs, n_passives):
+def test_riemann_solver_primitive_conservative_conversion(
+    riemann_solver, primitive_inputs, n_passives
+):
     """
     Test the LLF flux calculation.
     """
     N = 32
     gamma = 5 / 3
+
     rho_L, vx_L, vy_L, vz_L, P_L, passives_L = random_hydro_data(N, n_passives)
     rho_R, vx_R, vy_R, vz_R, P_R, passives_R = random_hydro_data(N, n_passives)
-    riemann_solver(
+
+    _, ux_L, uy_L, uz_L, E_L, conserved_passives_L = {
+        True: conservatives_from_primitives,
+        False: primitives_from_conservatives,
+    }[primitive_inputs](rho_L, vx_L, vy_L, vz_L, P_L, gamma, passives_L)
+    _, ux_R, uy_R, uz_R, E_R, conserved_passives_R = {
+        True: conservatives_from_primitives,
+        False: primitives_from_conservatives,
+    }[primitive_inputs](rho_R, vx_R, vy_R, vz_R, P_R, gamma, passives_R)
+
+    F_rho1, F_mx1, F_my1, F_mz1, F_E1, F_conserved_passives1 = riemann_solver(
         rho_L,
         vx_L,
         vy_L,
@@ -183,15 +240,38 @@ def test_riemann_call(riemann_solver, primitive_inputs, n_passives):
         vz_R,
         P_R,
         gamma,
+        primitive_inputs,
         passives_L,
         passives_R,
-        primitive_inputs,
     )
+    F_rho2, F_mx2, F_my2, F_mz2, F_E2, F_conserved_passives2 = riemann_solver(
+        rho_L,
+        ux_L,
+        uy_L,
+        uz_L,
+        E_L,
+        rho_R,
+        ux_R,
+        uy_R,
+        uz_R,
+        E_R,
+        gamma,
+        not primitive_inputs,
+        conserved_passives_L,
+        conserved_passives_R,
+    )
+    assert l2_norm(F_rho1, F_rho2) < 1e-15
+    assert l2_norm(F_mx1, F_mx2) < 1e-15
+    assert l2_norm(F_my1, F_my2) < 1e-15
+    assert l2_norm(F_mz1, F_mz2) < 1e-15
+    assert l2_norm(F_E1, F_E2) < 1e-15
+    if n_passives > 0:
+        assert l2_norm(F_conserved_passives1, F_conserved_passives2) < 1e-15
 
 
 @pytest.mark.parametrize("riemann_solver", [llf, hllc])
 @pytest.mark.parametrize("primitive_inputs", [True, False])
-def test_llf_with_passives(riemann_solver, primitive_inputs):
+def test_riemann_solver_passivity(riemann_solver, primitive_inputs):
     """
     Test that the the LLF flux calculation is unchanged by passive variables.
     """
@@ -212,7 +292,7 @@ def test_llf_with_passives(riemann_solver, primitive_inputs):
         vz_R,
         P_R,
         gamma,
-        primitives=primitive_inputs,
+        primitive_inputs,
     )
     F_with_passives = riemann_solver(
         rho_L,
@@ -226,9 +306,9 @@ def test_llf_with_passives(riemann_solver, primitive_inputs):
         vz_R,
         P_R,
         gamma,
+        primitive_inputs,
         passives_L,
         passives_R,
-        primitives=primitive_inputs,
     )
     for i in range(5):
         assert xp.all(F[i] == F_with_passives[i])

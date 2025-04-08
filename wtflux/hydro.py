@@ -210,9 +210,9 @@ def call_riemann_solver(
     v3_R: ArrayLike,
     P_R: ArrayLike,
     gamma: float,
+    primitives: bool = True,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
-    primitives: bool = True,
 ) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
     # prepare conservative variables
     if primitives:
@@ -359,9 +359,9 @@ def llf(
     v3_R: ArrayLike,
     P_R: ArrayLike,
     gamma: float,
+    primitives: bool = True,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
-    primitives: bool = True,
 ) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
     """
     Compute the Lax-Friedrichs fluxes.
@@ -378,12 +378,12 @@ def llf(
         v3_R (ArrayLike): Right second transverse velocity component.
         P_R (ArrayLike): Right pressure.
         gamma (float): Adiabatic index.
+        primitives (bool): Whether the input variables are primitive variables. If
+            False, they are considered conservative variables.
         passives_L (Optional[ArrayLike]): Left passive scalars density
             (rho*passives).
         passives_R (Optional[ArrayLike]): Right passive scalars density
             (rho*passives).
-        primitives (bool): Whether the input variables are primitive variables. If
-            False, they are considered conservative variables.
     """
     return call_riemann_solver(
         _llf,
@@ -398,9 +398,9 @@ def llf(
         v3_R,
         P_R,
         gamma,
+        primitives,
         passives_L,
         passives_R,
-        primitives,
     )
 
 
@@ -498,9 +498,9 @@ def hllc(
     v3_R: ArrayLike,
     P_R: ArrayLike,
     gamma: float,
+    primitives: bool = True,
     passives_L: Optional[ArrayLike] = None,
     passives_R: Optional[ArrayLike] = None,
-    primitives: bool = True,
 ) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, Optional[ArrayLike]]:
     """
     Compute the HLLC fluxes.
@@ -517,12 +517,12 @@ def hllc(
         v3_R (ArrayLike): Right second transverse velocity component.
         P_R (ArrayLike): Right pressure.
         gamma (float): Adiabatic index.
+        primitives (bool): Whether the input variables are primitive variables. If
+            False, they are considered conservative variables.
         passives_L (Optional[ArrayLike]): Left passive scalars density
             (rho*passives).
         passives_R (Optional[ArrayLike]): Right passive scalars density
             (rho*passives).
-        primitives (bool): Whether the input variables are primitive variables. If
-            False, they are considered conservative variables.
 
     Returns:
         Tuple[ArrayLike, ...]: Fluxes.
@@ -547,6 +547,7 @@ def hllc(
         v3_R,
         P_R,
         gamma,
+        primitives,
         passives_L,
         passives_R,
     )
